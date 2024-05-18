@@ -7,8 +7,15 @@ from sklearn.metrics import classification_report
 from sqlalchemy import create_engine
 
 # Ensure necessary NLTK data packages are downloaded
-nltk.download('stopwords')
-nltk.download('punkt')
+try:
+    nltk.data.find('corpora/stopwords')
+except LookupError:
+    nltk.download('stopwords')
+
+try:
+    nltk.data.find('tokenizers/punkt')
+except LookupError:
+    nltk.download('punkt')
 
 # Database credentials
 db_params = {
@@ -40,38 +47,43 @@ def main():
     query = "SELECT username, comments FROM public.reddit_usernames_comments"
     df = pd.read_sql_query(query, engine)
 
-    # Step 3: Split data into training and testing sets
+    # Step 3: Load manually labeled training data from a CSV file
+    labeled_data = pd.read_csv('train_set2_labeled_reddit_comments.csv')
+
+    # Filter labeled data to include only the desired labels
+    desired_labels = ['Medical Doctor', 'Veterinarian', 'Other']
+    labeled_data = labeled_data[labeled_data['comments'].isin(desired_labels)]
+
+    # Step 4: Combine the labeled data with the retrieved data
+    df = pd.concat([df, labeled_data])
+
+    # Step 5: Preprocess the comments
+    df['cleaned_comments'] = df['comments'].apply(preprocess_text)
+
+    # Split data into training and testing sets
     df_train, df_test = train_test_split(df, test_size=0.2, random_state=42)
 
-    # Step 4: Preprocess the Training Data
-    df_train['cleaned_comments'] = df_train['comments'].apply(preprocess_text)
-
-    # Load manually labeled training data from a CSV file
-    labeled_data = pd.read_csv('labeled_reddit_comments.csv')
-
-    # Preprocess the labeled data
-    labeled_data['cleaned_comments'] = labeled_data['comments'].apply(preprocess_text)
-
-    # Step 5: Combine the labeled data with the training set
-    df_train = pd.concat([df_train, labeled_data])
+    # Separate features and labels
+    X_train = df_train['cleaned_comments']
+    y_train = df_train['comments']
+    X_test = df_test['cleaned_comments']
+    y_test = df_test['comments']
 
     # Step 6: Feature Engineering
     vectorizer = TfidfVectorizer(max_features=1000)
-    X_train = vectorizer.fit_transform(df_train['cleaned_comments'])
-    X_test = vectorizer.transform(df_test['comments'].apply(preprocess_text))
-    y_train = df_train['label']
-    y_test = df_test['label']
+    X_train_vec = vectorizer.fit_transform(X_train)
+    X_test_vec = vectorizer.transform(X_test)
 
     # Step 7: Model Selection and Training
     model = LogisticRegression()
-    model.fit(X_train, y_train)
+    model.fit(X_train_vec, y_train)
 
     # Step 8: Evaluate the Model
-    y_pred = model.predict(X_test)
-    print(classification_report(y_test, y_pred))
+    y_pred = model.predict(X_test_vec)
+    print(classification_report(y_test, y_pred, labels=desired_labels))
 
     # Step 9: Classify the Remaining Data
-    df_test['label'] = model.predict(X_test)
+    df_test['predicted_label'] = model.predict(X_test_vec)
 
     # Save the classified data to a CSV file
     df_test.to_csv('classified_reddit_comments.csv', index=False)
