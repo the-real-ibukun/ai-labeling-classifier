@@ -52,7 +52,7 @@ def main():
 
     # Filter labeled data to include only the desired labels
     desired_labels = ['Medical Doctor', 'Veterinarian', 'Other']
-    labeled_data = labeled_data[labeled_data['comments'].isin(desired_labels)]
+    labeled_data = labeled_data[labeled_data['label'].isin(desired_labels)]
 
     # Step 4: Combine the labeled data with the retrieved data
     df = pd.concat([df, labeled_data])
@@ -60,14 +60,21 @@ def main():
     # Step 5: Preprocess the comments
     df['cleaned_comments'] = df['comments'].apply(preprocess_text)
 
+    # Drop rows with NaN values in 'cleaned_comments' or 'label'
+    df = df.dropna(subset=['cleaned_comments', 'label'])
+
     # Split data into training and testing sets
     df_train, df_test = train_test_split(df, test_size=0.2, random_state=42)
 
     # Separate features and labels
     X_train = df_train['cleaned_comments']
-    y_train = df_train['comments']
+    y_train = df_train['label']  # assuming 'label' column for labels
     X_test = df_test['cleaned_comments']
-    y_test = df_test['comments']
+    y_test = df_test['label']
+
+    # Print label distribution
+    print("Training label distribution:\n", y_train.value_counts())
+    print("Testing label distribution:\n", y_test.value_counts())
 
     # Step 6: Feature Engineering
     vectorizer = TfidfVectorizer(max_features=1000)
@@ -80,7 +87,7 @@ def main():
 
     # Step 8: Evaluate the Model
     y_pred = model.predict(X_test_vec)
-    print(classification_report(y_test, y_pred, labels=desired_labels))
+    print(classification_report(y_test, y_pred, target_names=desired_labels, zero_division=0))
 
     # Step 9: Classify the Remaining Data
     df_test['predicted_label'] = model.predict(X_test_vec)
